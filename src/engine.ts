@@ -2,6 +2,9 @@
 // COGNITIVE AGENT & SOCIAL PHYSICS ENGINE
 // ============================================================
 
+import { TheoryOfMindEngine } from './theoryOfMind';
+import { NarrativeSandbox, ReportGenerator, SimulationReport } from './narrative';
+
 // --- Utility Functions ---
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -191,6 +194,9 @@ export class SimulationEngine {
   factionColors: string[];
   factionNames: string[];
   nextAgentId: number;
+  tomEngine: TheoryOfMindEngine;
+  narrativeSandbox: NarrativeSandbox;
+  reportGenerator: ReportGenerator;
 
   constructor() {
     this.agents = [];
@@ -212,6 +218,9 @@ export class SimulationEngine {
       'ALPHA', 'BETA', 'GAMMA', 'DELTA',
       'EPSILON', 'ZETA', 'ETA', 'THETA'
     ];
+    this.tomEngine = new TheoryOfMindEngine();
+    this.narrativeSandbox = new NarrativeSandbox();
+    this.reportGenerator = new ReportGenerator();
   }
 
   initialize(count: number, width: number, height: number): void {
@@ -297,6 +306,15 @@ export class SimulationEngine {
     this.decayMemories();
     if (this.tick % 10 === 0) {
       this.detectFactions();
+      this.tomEngine.updateMentalStates(this.agents, this.tick);
+    }
+    
+    // Update narrative consequences
+    if (this.tick % 5 === 0) {
+      const narrativeEvents = this.narrativeSandbox.update(this);
+      for (const evt of narrativeEvents) {
+        this.addEvent('NARRATIVE', evt);
+      }
     }
   }
 
@@ -627,6 +645,10 @@ export class SimulationEngine {
       }
     }
     return edges;
+  }
+
+  generateReport(): SimulationReport {
+    return this.reportGenerator.generateReport(this);
   }
 }
 

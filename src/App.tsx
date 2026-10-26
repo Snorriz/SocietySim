@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SimulationEngine, ForceLayout, Agent } from './engine';
+import { SimulationReport } from './narrative';
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -14,6 +15,11 @@ function App() {
   const [speed, setSpeed] = useState(5);
   const [agentCount] = useState(12);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [showToM, setShowToM] = useState(false);
+  const [showNarrative, setShowNarrative] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [narrativePrompt, setNarrativePrompt] = useState('');
+  const [report, setReport] = useState<SimulationReport | null>(null);
 
   const runningRef = useRef(running);
   const speedRef = useRef(speed);
@@ -34,6 +40,7 @@ function App() {
     setCanvasSize({ width: w, height: h });
     engineRef.current.initialize(agentCount, w, h);
     setSelectedAgentId(null);
+    setReport(null);
   }, [agentCount]);
 
   useEffect(() => {
@@ -274,6 +281,22 @@ function App() {
     dragRef.current = null;
   };
 
+  const handleNarrativeSubmit = () => {
+    if (!narrativePrompt.trim()) return;
+    const engine = engineRef.current;
+    const prompt = engine.narrativeSandbox.parsePrompt(narrativePrompt, engine);
+    engine.narrativeSandbox.executePrompt(prompt, engine);
+    setNarrativePrompt('');
+    forceUpdate(n => n + 1);
+  };
+
+  const handleGenerateReport = () => {
+    const engine = engineRef.current;
+    const report = engine.generateReport();
+    setReport(report);
+    setShowReport(true);
+  };
+
   const engine = engineRef.current;
   const selectedAgent = selectedAgentId !== null ? engine.agents.find(a => a.id === selectedAgentId) || null : null;
 
@@ -282,7 +305,7 @@ function App() {
       {/* Top Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-[#0d0d15] border-b border-green-900/50 flex-shrink-0 flex-wrap">
         <div className="text-cyan-400 font-bold text-sm tracking-wider mr-4 whitespace-nowrap">
-          ◈ SOCIAL PHYSICS ENGINE
+          ◈ SOCIAL PHYSICS ENGINE v2.0
         </div>
         <button
           onClick={() => setRunning(!running)}
@@ -308,6 +331,24 @@ function App() {
           {' '}F:<span className="text-cyan-300">{engine.factions.length}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowToM(!showToM)}
+            className={`px-2 py-1 text-xs border rounded transition-colors ${showToM ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-gray-700 text-gray-500 hover:border-gray-500'}`}
+          >
+            🧠 ToM
+          </button>
+          <button
+            onClick={() => setShowNarrative(!showNarrative)}
+            className={`px-2 py-1 text-xs border rounded transition-colors ${showNarrative ? 'border-yellow-500 text-yellow-400 bg-yellow-500/10' : 'border-gray-700 text-gray-500 hover:border-gray-500'}`}
+          >
+            📖 NARRATIVA
+          </button>
+          <button
+            onClick={handleGenerateReport}
+            className="px-2 py-1 text-xs border border-blue-700 text-blue-400 rounded hover:bg-blue-500/10 transition-colors"
+          >
+            📊 REPORT
+          </button>
           <button
             onClick={() => { engine.addAgent(canvasSize.width, canvasSize.height); forceUpdate(n => n + 1); }}
             className="px-2 py-1 text-xs border border-green-700 text-green-400 rounded hover:bg-green-500/10 transition-colors"
@@ -435,6 +476,7 @@ function App() {
                     evt.type === 'ALTRUISM' ? 'text-cyan-400' :
                     evt.type === 'RUMOR' ? 'text-purple-400' :
                     evt.type === 'GOSSIP' ? 'text-green-500/80' :
+                    evt.type === 'NARRATIVE' ? 'text-yellow-400' :
                     'text-yellow-400'
                   }>
                     {evt.type}
@@ -446,6 +488,147 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Theory of Mind Panel */}
+      {showToM && (
+        <div className="fixed top-16 left-4 w-96 h-96 bg-[#0d0d15] border border-purple-900/50 rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="px-3 py-2 border-b border-purple-900/50 text-[10px] text-purple-400 font-bold tracking-wider flex-shrink-0 flex justify-between items-center">
+            <span>🧠 THEORY OF MIND - Multi-Level Reasoning</span>
+            <button onClick={() => setShowToM(false)} className="text-gray-500 hover:text-white">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="text-[9px] text-gray-400 mb-2">
+              Recent mental state inferences:
+            </div>
+            {engine.tomEngine.getRecentThoughts(15).map((thought, i) => (
+              <div key={i} className="text-[9px] bg-purple-500/5 border border-purple-900/30 rounded p-2">
+                <div className="text-purple-400 font-bold">Level {thought.level} | Confidence: {thought.confidence.toFixed(2)}</div>
+                <div className="text-gray-300 mt-1">{thought.content}</div>
+                <div className="text-gray-600 text-[8px] mt-1">[T{thought.timestamp}]</div>
+              </div>
+            ))}
+            {engine.tomEngine.getRecentThoughts(1).length === 0 && (
+              <div className="text-[9px] text-gray-600 italic">No mental state inferences yet. Let the simulation run...</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Narrative Sandbox Panel */}
+      {showNarrative && (
+        <div className="fixed top-16 left-4 w-[500px] h-[500px] bg-[#0d0d15] border border-yellow-900/50 rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="px-3 py-2 border-b border-yellow-900/50 text-[10px] text-yellow-400 font-bold tracking-wider flex-shrink-0 flex justify-between items-center">
+            <span>📖 NARRATIVE SANDBOX - Generative Storytelling</span>
+            <button onClick={() => setShowNarrative(false)} className="text-gray-500 hover:text-white">✕</button>
+          </div>
+          <div className="p-3 border-b border-yellow-900/30 flex-shrink-0">
+            <div className="text-[9px] text-gray-400 mb-2">
+              Describe a narrative event (Italian or English):
+            </div>
+            <textarea
+              value={narrativePrompt}
+              onChange={(e) => setNarrativePrompt(e.target.value)}
+              placeholder="Es: 'Agent_3 tradisce Agent_7' o 'Una crisi colpisce la comunità'"
+              className="w-full h-20 bg-black/30 border border-yellow-900/30 rounded p-2 text-[10px] text-yellow-300 placeholder-gray-600 resize-none"
+            />
+            <button
+              onClick={handleNarrativeSubmit}
+              className="mt-2 px-4 py-1.5 text-xs border border-yellow-700 text-yellow-400 rounded hover:bg-yellow-500/20 transition-colors"
+            >
+              ▶ EXECUTE NARRATIVE
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="text-[9px] text-gray-400 mb-2">
+              Active narrative arcs:
+            </div>
+            {engine.narrativeSandbox.getActiveArcs().map((arc, i) => (
+              <div key={i} className="text-[9px] bg-yellow-500/5 border border-yellow-900/30 rounded p-2">
+                <div className="text-yellow-400 font-bold">{arc.initiation.description}</div>
+                <div className="text-gray-400 mt-1">
+                  Affected: {arc.initiation.affectedAgents.map(id => `A${id}`).join(', ')}
+                </div>
+                <div className="text-gray-500 mt-1">
+                  Consequences: {arc.consequences.length} scheduled
+                </div>
+                {arc.resolution && (
+                  <div className="text-green-400 mt-1 italic">Resolved: {arc.resolution}</div>
+                )}
+              </div>
+            ))}
+            {engine.narrativeSandbox.getActiveArcs().length === 0 && (
+              <div className="text-[9px] text-gray-600 italic">No active narrative arcs. Create one above!</div>
+            )}
+            <div className="text-[9px] text-gray-400 mt-4 mb-2">
+              Narrative log:
+            </div>
+            {engine.narrativeSandbox.getNarrativeLog().slice(0, 10).map((log, i) => (
+              <div key={i} className="text-[8px] text-gray-500">{log}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Report Panel */}
+      {showReport && report && (
+        <div className="fixed top-16 left-4 w-[700px] h-[600px] bg-[#0d0d15] border border-blue-900/50 rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="px-3 py-2 border-b border-blue-900/50 text-[10px] text-blue-400 font-bold tracking-wider flex-shrink-0 flex justify-between items-center">
+            <span>📊 SIMULATION REPORT - Post-Analysis</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const text = engine.reportGenerator.formatReportText(report);
+                  navigator.clipboard.writeText(text);
+                }}
+                className="text-[9px] px-2 py-0.5 border border-blue-700 text-blue-400 rounded hover:bg-blue-500/20"
+              >
+                📋 COPY
+              </button>
+              <button onClick={() => setShowReport(false)} className="text-gray-500 hover:text-white">✕</button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="text-[10px] text-gray-400">
+              Generated: {new Date(report.timestamp).toLocaleString()} | Duration: {report.totalTicks} ticks | Agents: {report.agentCount}
+            </div>
+            
+            <div className="bg-blue-500/5 border border-blue-900/30 rounded p-3">
+              <div className="text-[10px] text-blue-400 font-bold mb-2">EXECUTIVE SUMMARY</div>
+              <div className="text-[9px] text-gray-300 whitespace-pre-line">{report.summary}</div>
+            </div>
+
+            {report.sections.map((section, i) => (
+              <div key={i} className="bg-gray-500/5 border border-gray-900/30 rounded p-3">
+                <div className="text-[10px] text-cyan-400 font-bold mb-2">{section.title}</div>
+                <div className="space-y-1">
+                  {section.content.map((line, j) => (
+                    <div key={j} className="text-[9px] text-gray-300">{line}</div>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.entries(section.metrics).map(([key, value]) => (
+                    <div key={key} className="text-[8px] bg-black/30 px-2 py-1 rounded">
+                      <span className="text-gray-500">{key}:</span>{' '}
+                      <span className="text-cyan-300">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {report.suggestions.length > 0 && (
+              <div className="bg-green-500/5 border border-green-900/30 rounded p-3">
+                <div className="text-[10px] text-green-400 font-bold mb-2">RECOMMENDATIONS</div>
+                <div className="space-y-1">
+                  {report.suggestions.map((suggestion, i) => (
+                    <div key={i} className="text-[9px] text-gray-300">{suggestion}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
